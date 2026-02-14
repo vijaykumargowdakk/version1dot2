@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, lovableClient } from '@/integrations/supabase/client';
 import { PARTS_MASTER_LIST, type InspectionPart, type Inspection } from '@/types/inspection';
 
 interface AnalysisResult {
@@ -21,9 +21,10 @@ interface AnalyzeResponse {
 }
 
 export async function analyzeVehicle(url: string, imageUrls?: string[]): Promise<AnalyzeResponse> {
-  console.log('Calling analyze-vehicle function...');
+  console.log('Calling Lovable analyze-vehicle function...');
   
-  const { data, error } = await supabase.functions.invoke('analyze-vehicle', {
+  // 1. USE LOVABLE'S CLIENT TO RUN THE AI FUNCTION (Uses their credits)
+  const { data, error } = await lovableClient.functions.invoke('analyze-vehicle', {
     body: { url, imageUrls },
   });
 
@@ -53,12 +54,49 @@ export async function analyzeVehicle(url: string, imageUrls?: string[]): Promise
     };
   });
 
+  // Prepare the data variables for saving
+  const healthScore = data?.healthScore || analysis.filter(p => p.status === 'GOOD').length;
+  const thumbnail = data?.imageUrls?.[0] || imageUrls?.[0] || '';
+  const finalImageUrls = data?.imageUrls || imageUrls || [];
+  const finalVehicleName = data?.vehicleName || 'Unknown Vehicle';
+
+  // 2. SAVE THE RESULT TO YOUR PERSONAL DATABASE
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (session?.user) {
+      // Save for logged-in user
+      await supabase.from('user_inspections').insert({
+        user_id: session.user.id,
+        vehicle_url: url,
+        vehicle_name: finalVehicleName,
+        thumbnail_url: thumbnail,
+        image_urls: finalImageUrls,
+        health_score: healthScore,
+        inspection_data: analysis as any,
+      });
+    } else {
+      // Save as public demo scan
+      await supabase.from('inspections').upsert({
+        vehicle_url: url,
+        vehicle_name: finalVehicleName,
+        thumbnail_url: thumbnail,
+        image_urls: finalImageUrls,
+        health_score: healthScore,
+        inspection_data: analysis as any,
+      }, { onConflict: 'vehicle_url' });
+    }
+  } catch (dbError) {
+    console.error('Failed to save to personal database:', dbError);
+    // Note: We don't throw here so the user still sees the result even if the save fails
+  }
+
   return {
     analysis,
-    vehicleName: data?.vehicleName,
+    vehicleName: finalVehicleName,
     vehicleSummary: data?.vehicleSummary,
-    imageUrls: data?.imageUrls || imageUrls || [],
-    healthScore: data?.healthScore || analysis.filter(p => p.status === 'GOOD').length,
+    imageUrls: finalImageUrls,
+    healthScore: healthScore,
     inspectionId: data?.inspectionId,
   };
 }
