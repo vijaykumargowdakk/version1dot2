@@ -1,0 +1,4 @@
+project_id = "ynvefgzjtibpzgbpbkuc"
+
+[functions.analyze-vehicle]
+verify_jwt = false
