@@ -24,8 +24,8 @@ export function PartFeedback({ inspectionId, partCode, userId }: PartFeedbackPro
   const submitFeedback = async (isPositive: boolean, feedbackComment?: string) => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('inspection_feedback' as any)
+      const { error } = await (supabase as any)
+        .from('inspection_feedback')
         .upsert(
           {
             inspection_id: inspectionId,
