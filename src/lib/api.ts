@@ -1,6 +1,9 @@
 import { supabase, lovableClient } from '@/integrations/supabase/client';
 import { PARTS_MASTER_LIST, type InspectionPart, type Inspection } from '@/types/inspection';
 
+// Helper to bypass strict type-checking for tables not yet in generated types
+const fromTable = (table: string) => (supabase as any).from(table);
+
 interface AnalysisResult {
   code: string;
   name?: string;
@@ -66,7 +69,7 @@ export async function analyzeVehicle(url: string, imageUrls?: string[]): Promise
     
     if (session?.user) {
       // Save for logged-in user
-      await supabase.from('user_inspections').insert({
+      await fromTable('user_inspections').insert({
         user_id: session.user.id,
         vehicle_url: url,
         vehicle_name: finalVehicleName,
@@ -77,7 +80,7 @@ export async function analyzeVehicle(url: string, imageUrls?: string[]): Promise
       });
     } else {
       // Save as public demo scan
-      await supabase.from('inspections').upsert({
+      await fromTable('inspections').upsert({
         vehicle_url: url,
         vehicle_name: finalVehicleName,
         thumbnail_url: thumbnail,
@@ -105,8 +108,8 @@ export async function getInspectionHistory(userId?: string): Promise<Inspection[
   const allInspections: Inspection[] = [];
 
   // Always fetch public demo scans from inspections table
-  const { data: demoData, error: demoError } = await supabase
-    .from('inspections')
+  const { data: demoData, error: demoError } = await fromTable('inspections')
+    .select('*')
     .select('*')
     .is('user_id', null)
     .order('created_at', { ascending: false });
@@ -130,8 +133,8 @@ export async function getInspectionHistory(userId?: string): Promise<Inspection[
 
   // If user is logged in, also fetch their personal scans from user_inspections table
   if (userId) {
-    const { data: userData, error: userError } = await supabase
-      .from('user_inspections')
+    const { data: userData, error: userError } = await fromTable('user_inspections')
+      .select('*')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -163,8 +166,8 @@ export async function getInspectionHistory(userId?: string): Promise<Inspection[
 export async function getInspectionById(id: string, userId?: string): Promise<Inspection | null> {
   // First try user_inspections if user is logged in
   if (userId) {
-    const { data: userData, error: userError } = await supabase
-      .from('user_inspections')
+    const { data: userData, error: userError } = await fromTable('user_inspections')
+      .select('*')
       .select('*')
       .eq('id', id)
       .eq('user_id', userId)
@@ -187,8 +190,8 @@ export async function getInspectionById(id: string, userId?: string): Promise<In
   }
 
   // Fall back to demo inspections table
-  const { data, error } = await supabase
-    .from('inspections')
+  const { data, error } = await fromTable('inspections')
+    .select('*')
     .select('*')
     .eq('id', id)
     .is('user_id', null)
