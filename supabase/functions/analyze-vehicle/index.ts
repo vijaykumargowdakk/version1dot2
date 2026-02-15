@@ -121,82 +121,16 @@ You must output a JSON object adhering strictly to this structure:
 27. Bumper Bar Rear (BBR) - [Reinforcement Bar]
 `
 
-// --- SCRAPING LOGIC (Robust & Expanded) ---
-async function scrapeWebpage(url: string): Promise<{ title: string; imageUrls: string[] }> {
-  console.log('Attempting to scrape:', url)
-  
-  // SSRF check
-  const parsed = new URL(url);
-  if (isPrivateOrReservedIP(parsed.hostname)) {
-    console.warn('Blocked SSRF attempt to:', parsed.hostname);
-    return { title: '', imageUrls: [] };
-  }
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    })
-
-    if (!response.ok) {
-      console.log('Scrape failed with status:', response.status)
-      return { title: '', imageUrls: [] }
-    }
-
-    const html = await response.text()
-    
-    // Extract Title
-    const titleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
-                       html.match(/<title[^>]*>([^<]+)<\/title>/i)
-    const title = titleMatch ? titleMatch[1].trim() : ''
-    
-    const imageUrls: string[] = []
-    
-    // Strategy A: OG Image (Usually high quality)
-    const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
-    if (ogImageMatch) imageUrls.push(ogImageMatch[1])
-    
-    // Strategy B: Standard Images
-    const imgMatches = html.matchAll(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi)
-    for (const match of imgMatches) {
-      const src = match[1]
-      // Filter for vehicle-likely images
-      if (src.match(/(vehicle|auto|car|thumb|photo|image|cdn|media|high-res|full)/i) && 
-          !src.match(/(logo|icon|sprite|blank|spacer)/i)) {
-          imageUrls.push(src)
-      }
-    }
-    
-    // Strategy C: Lazy Loaded Images (Common on auction sites)
-    const lazySrcMatches = html.matchAll(/data-src=["']([^"']+)["']/gi)
-    for (const match of lazySrcMatches) {
-      const src = match[1]
-      if (src.startsWith('http') && src.match(/\.(jpg|jpeg|png|webp)/i)) {
-        imageUrls.push(src)
-      }
-    }
-    
-    // Dedup and take Top 20 (Ensures we get engine/interior shots)
-    const uniqueImages = [...new Set(imageUrls)].slice(0, 20)
-    
-    console.log(`Scraped: title="${title}", found ${uniqueImages.length} images`)
-    return { title, imageUrls: uniqueImages }
-  } catch (error) {
-    console.error('Scrape error:', error)
-    return { title: '', imageUrls: [] }
-  }
-}
-
 async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeType: string } | null> {
   try {
-    // SSRF check on image URLs too
     if (!isValidHttpUrl(url)) return null;
 
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        // IMPORTANT: The referer header allows us to download the image from IAAI CDN
+        'Referer': 'https://www.iaai.com/' 
+      },
     })
     
     if (!response.ok) return null
@@ -221,7 +155,8 @@ async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeTy
 }
 
 // --- MAIN HANDLER ---
-serve(async (req) => {
+// Notice the 'req: Request' type, which fixes the Deno TS warning
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -240,12 +175,11 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Invalid or blocked URL. Only public HTTP(S) URLs are allowed.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Validate and limit provided image URLs
     const sanitizedImageUrls = providedImageUrls
       .filter((u): u is string => typeof u === 'string' && isValidHttpUrl(u))
       .slice(0, 20);
 
-    // --- SERVER-SIDE AUTH: Extract userId from JWT ---
+    // --- SERVER-SIDE AUTH ---
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY')!;
     const authClient = createClient(supabaseUrl, supabaseAnonKey);
@@ -254,17 +188,11 @@ serve(async (req) => {
     const authHeader = req.headers.get('authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      // Validate JWT format (3 dot-separated parts)
       if (token.split('.').length === 3) {
         const { data: { user }, error: authError } = await authClient.auth.getUser(token);
         if (!authError && user) {
           userId = user.id;
-          console.log('Authenticated user:', userId);
-        } else {
-          console.log('Auth check failed or no valid user, proceeding as anonymous');
         }
-      } else {
-        console.log('Malformed token, proceeding as anonymous');
       }
     }
 
@@ -273,21 +201,38 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'AI service not configured.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // --- SCRAPING & FALLBACK ---
-    let vehicleName = ''
+    // --- SCRAPING LOGIC (Using Render Python Microservice) ---
+    const vehicleName = url.split('/').pop()?.replace(/~/g, ' ') || 'Unknown Vehicle'
     let imageUrls: string[] = sanitizedImageUrls.length > 0 ? sanitizedImageUrls : []
     
     if (!imageUrls.length) {
-      const scraped = await scrapeWebpage(url)
-      vehicleName = scraped.title
-      imageUrls = scraped.imageUrls
+      const pythonApiUrl = "https://scrapper-u9cd.onrender.com/scrape-images";
+      console.log(`Calling Python API at ${pythonApiUrl}...`);
+      
+      try {
+        const scraperResponse = await fetch(pythonApiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: url })
+        });
+
+        if (scraperResponse.ok) {
+          const data = await scraperResponse.json();
+          imageUrls = data.images || [];
+          console.log(`Python API successfully returned ${imageUrls.length} images.`);
+        } else {
+          const errMsg = await scraperResponse.text();
+          console.error("Python API failed:", scraperResponse.status, errMsg);
+        }
+      } catch (err) {
+        console.error("Failed to connect to Python API:", err);
+      }
     }
 
-    // If scraping blocked/failed, return specific error code for frontend to handle
     if (!imageUrls.length) {
       return new Response(
         JSON.stringify({ 
-          error: 'Unable to extract images automatically. Anti-bot protection may be active.', 
+          error: 'Unable to extract images automatically. Anti-bot protection may be active on the Scraper.', 
           code: 'MANUAL_INPUT_REQUIRED' 
         }),
         { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -297,7 +242,6 @@ serve(async (req) => {
     console.log(`Analyzing ${imageUrls.length} images with Lovable AI...`)
 
     // --- PARALLEL IMAGE PROCESSING ---
-    // Increase processing limit to 20 images to ensure engine/interior shots are covered
     const targetImages = imageUrls.slice(0, 20);
     
     const imageFetchPromises = targetImages.map(async (imgUrl) => {
@@ -321,7 +265,7 @@ serve(async (req) => {
       )
     }
 
-    // --- AI CALL ---
+    // --- AI CALL (Google Gemini 2.5 Pro) ---
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -371,7 +315,7 @@ serve(async (req) => {
     }
 
     // --- DB SAVE ---
-    const goodParts = Array.isArray(analysis) ? analysis.filter((p: any) => p.status === 'GOOD').length : 0;
+    const goodParts = Array.isArray(analysis) ? analysis.filter((p: { status: string }) => p.status === 'GOOD').length : 0;
     
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, serviceRoleKey)
@@ -380,7 +324,6 @@ serve(async (req) => {
     let dbError = null;
 
     if (userId) {
-      // Save to user_inspections table for authenticated users
       console.log(`Saving to user_inspections for user: ${userId}`)
       const result = await supabase
         .from('user_inspections')
@@ -399,7 +342,6 @@ serve(async (req) => {
       savedData = result.data
       dbError = result.error
     } else {
-      // Save to inspections table for demo scans (no user)
       console.log('Saving to inspections as demo scan (no user)')
       const result = await supabase
         .from('inspections')
@@ -434,6 +376,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
+    console.error("Critical Function Error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
