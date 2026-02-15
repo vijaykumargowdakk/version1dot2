@@ -42,6 +42,7 @@ export default function Index() {
       setAnalysisStep(3);
       
       setTimeout(() => {
+        setIsAnalyzing(false);
         navigate('/results', {
           state: {
             vehicleUrl: url,
