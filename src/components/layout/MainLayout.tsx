@@ -17,7 +17,7 @@ export function MainLayout({ children, showStatusFooter = false }: MainLayoutPro
   const isHomePage = location.pathname === '/';
 
   return (
-    <div className="relative w-full min-h-screen bg-background overflow-x-hidden">
+    <div className="relative w-full min-h-screen bg-background/80 overflow-x-hidden">
       {isHomePage ? (
         <>
           {/* Home: Mouse-following Spotlight */}
