@@ -2,8 +2,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { DotPattern } from "@/components/ui/dot-pattern";
 import Index from "./pages/Index";
 import Results from "./pages/Results";
 import VisualResults from "./pages/VisualResults";
@@ -15,6 +16,17 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+function PatternLayout() {
+  return (
+    <>
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <DotPattern className="opacity-60" />
+      </div>
+      <Outlet />
+    </>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider defaultTheme="system" storageKey="prospect-ui-theme">
@@ -24,12 +36,14 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/results" element={<Results />} />
-            <Route path="/visual-results" element={<VisualResults />} />
-            <Route path="/history" element={<History />} />
-            <Route path="/settings" element={<Settings />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
+            <Route element={<PatternLayout />}>
+              <Route path="/results" element={<Results />} />
+              <Route path="/visual-results" element={<VisualResults />} />
+              <Route path="/history" element={<History />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/signup" element={<Signup />} />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
