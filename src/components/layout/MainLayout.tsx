@@ -4,7 +4,6 @@ import { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SplineScene } from '@/components/ui/splite';
 import { SpotlightNew } from '@/components/ui/spotlight-new';
-import { BackgroundPaths } from '@/components/ui/background-paths';
 import { CinematicNav } from '@/components/CinematicNav';
 
 interface MainLayoutProps {
@@ -18,7 +17,7 @@ export function MainLayout({ children, showStatusFooter = false }: MainLayoutPro
 
   return (
     <div className="relative w-full min-h-screen bg-background/80 overflow-x-hidden">
-      {isHomePage ? (
+      {isHomePage && (
         <>
           {/* Home: Mouse-following Spotlight */}
           <SpotlightNew size={500} />
@@ -39,9 +38,6 @@ export function MainLayout({ children, showStatusFooter = false }: MainLayoutPro
             }}
           />
         </>
-      ) : (
-        /* Non-home pages: Animated path lines background */
-        <BackgroundPaths />
       )}
 
       {/* Navigation - z-[60] ensures it's always clickable above content */}
