@@ -239,7 +239,7 @@ serve(async (req: Request) => {
       )
     }
 
-    console.log(`Analyzing ${imageUrls.length} images with Lovable AI...`)
+    console.log(`Analyzing ${imageUrls.length} images with Custom AI...`)
 
     // --- PARALLEL IMAGE PROCESSING ---
     const targetImages = imageUrls.slice(0, 20);

@@ -200,9 +200,14 @@ export default function VisualResults() {
                             idx === 0 && "col-span-2 aspect-[2/1]" 
                         )}
                         >
+                        <div className="absolute top-2 left-2 z-20 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/20 shadow-sm">
+                            #{idx + 1}
+                        </div>
                         <img 
                             src={url} 
                             alt={`Evidence ${idx + 1}`} 
+                            referrerPolicy="no-referrer" 
+                            loading="lazy"
                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                         />
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
