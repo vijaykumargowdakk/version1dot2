@@ -27,6 +27,10 @@ import type { InspectionPart, PartSeverity } from '@/types/inspection';
 
 // --- STYLES FOR ELEGANT SCROLLBARS ---
 const scrollbarStyles = `
+  .custom-scroll-area {
+    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+  }
   .custom-scroll-area::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -83,6 +87,7 @@ export default function VisualResults() {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [zoomScale, setZoomScale] = useState(1);
+  const [transformOrigin, setTransformOrigin] = useState('center center');
   const [searchQuery, setSearchQuery] = useState('');
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const accordionRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -151,7 +156,7 @@ export default function VisualResults() {
       <style>{scrollbarStyles}</style>
       <TooltipProvider>
         {/* Full Viewport Container */}
-        <div className="container h-[calc(100vh-4rem)] py-4 flex flex-col gap-4 max-w-[1920px]">
+        <div className="container h-[calc(100vh-4rem)] pt-1 pb-2 flex flex-col gap-2 max-w-[1920px]">
           
           {/* --- HEADER --- */}
           <div className="flex items-center justify-between flex-shrink-0 bg-background/80 backdrop-blur-md p-2 rounded-xl border border-border/40 shadow-sm z-10">
@@ -434,21 +439,25 @@ export default function VisualResults() {
           </div>
 
           {/* LIGHTBOX OVERLAY */}
-          <Dialog open={!!selectedImage} onOpenChange={(open) => { if (!open) { setSelectedImage(null); setZoomScale(1); } }}>
+          <Dialog open={!!selectedImage} onOpenChange={(open) => { if (!open) { setSelectedImage(null); setZoomScale(1); setTransformOrigin('center center'); } }}>
             <DialogContent className="max-w-[90vw] md:max-w-4xl p-0 bg-transparent border-none shadow-none flex items-center justify-center">
-              {selectedImage && (
+          {selectedImage && (
                 <div
                   className="relative group overflow-hidden rounded-lg"
                   onWheel={(e) => {
                     e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    setTransformOrigin(`${x}% ${y}%`);
                     setZoomScale(prev => Math.min(5, Math.max(1, prev - e.deltaY * 0.001)));
                   }}
                 >
                     <img
                         src={selectedImage}
                         alt="Vehicle detail"
-                        className="w-full h-[80vh] object-contain shadow-2xl bg-black/50 backdrop-blur-sm transition-transform duration-100"
-                        style={{ transform: `scale(${zoomScale})`, transformOrigin: 'center center' }}
+                        className="w-full h-[80vh] object-contain shadow-2xl bg-black/50 backdrop-blur-sm"
+                        style={{ transform: `scale(${zoomScale})`, transformOrigin: transformOrigin, transition: 'transform 0.1s ease-out' }}
                     />
                     <Button
                         size="icon"
