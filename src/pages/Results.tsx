@@ -82,6 +82,7 @@ export default function VisualResults() {
   const { user } = useAuth();
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const accordionRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -193,7 +194,7 @@ export default function VisualResults() {
                     {(imageUrls || []).map((url, idx) => (
                         <button
                         key={idx}
-                        onClick={() => setSelectedImage(url)}
+                        onClick={() => { setSelectedImage(url); setZoomScale(1); }}
                         className={cn(
                             "group relative w-full rounded-md overflow-hidden bg-muted aspect-video border border-transparent hover:border-primary/50 transition-all duration-300",
                             // Make the first image span full width for emphasis
@@ -256,20 +257,44 @@ export default function VisualResults() {
                             )}
                         </div>
 
-                        {/* Status Grid */}
+                        {/* Status Grid - Clickable Filters */}
                         <div className="grid grid-cols-3 gap-2 mb-3">
-                             <div className="p-2 rounded bg-success/10 border border-success/20 text-center">
+                             <button
+                               onClick={() => setActiveFilter(activeFilter === 'good' ? 'all' : 'good')}
+                               className={cn(
+                                 "p-2 rounded border text-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95",
+                                 activeFilter === 'good'
+                                   ? "bg-success/20 border-success/50 ring-1 ring-success/40 shadow-sm"
+                                   : "bg-success/10 border-success/20 hover:bg-success/20 hover:border-success/40"
+                               )}
+                             >
                                 <p className="text-lg font-bold text-success leading-none">{score.good}</p>
                                 <p className="text-[9px] text-muted-foreground uppercase font-semibold mt-1">Good</p>
-                             </div>
-                             <div className="p-2 rounded bg-destructive/10 border border-destructive/20 text-center">
+                             </button>
+                             <button
+                               onClick={() => setActiveFilter(activeFilter === 'damaged' ? 'all' : 'damaged')}
+                               className={cn(
+                                 "p-2 rounded border text-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95",
+                                 activeFilter === 'damaged'
+                                   ? "bg-destructive/20 border-destructive/50 ring-1 ring-destructive/40 shadow-sm"
+                                   : "bg-destructive/10 border-destructive/20 hover:bg-destructive/20 hover:border-destructive/40"
+                               )}
+                             >
                                 <p className="text-lg font-bold text-destructive leading-none">{score.damaged}</p>
                                 <p className="text-[9px] text-muted-foreground uppercase font-semibold mt-1">Damaged</p>
-                             </div>
-                             <div className="p-2 rounded bg-muted border border-border text-center">
+                             </button>
+                             <button
+                               onClick={() => setActiveFilter(activeFilter === 'unknown' ? 'all' : 'unknown')}
+                               className={cn(
+                                 "p-2 rounded border text-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95",
+                                 activeFilter === 'unknown'
+                                   ? "bg-muted border-foreground/30 ring-1 ring-foreground/20 shadow-sm"
+                                   : "bg-muted border-border hover:bg-muted/80 hover:border-foreground/20"
+                               )}
+                             >
                                 <p className="text-lg font-bold text-muted-foreground leading-none">{score.notVisible}</p>
                                 <p className="text-[9px] text-muted-foreground uppercase font-semibold mt-1">Unknown</p>
-                             </div>
+                             </button>
                         </div>
 
                         {/* Severity Badges */}
@@ -409,23 +434,35 @@ export default function VisualResults() {
           </div>
 
           {/* LIGHTBOX OVERLAY */}
-          <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+          <Dialog open={!!selectedImage} onOpenChange={(open) => { if (!open) { setSelectedImage(null); setZoomScale(1); } }}>
             <DialogContent className="max-w-[90vw] md:max-w-4xl p-0 bg-transparent border-none shadow-none flex items-center justify-center">
               {selectedImage && (
-                <div className="relative group">
-                    <img 
-                        src={selectedImage} 
-                        alt="Vehicle detail" 
-                        className="w-full h-[80vh] object-contain rounded-lg shadow-2xl bg-black/50 backdrop-blur-sm" 
+                <div
+                  className="relative group overflow-hidden rounded-lg"
+                  onWheel={(e) => {
+                    e.preventDefault();
+                    setZoomScale(prev => Math.min(5, Math.max(1, prev - e.deltaY * 0.001)));
+                  }}
+                >
+                    <img
+                        src={selectedImage}
+                        alt="Vehicle detail"
+                        className="w-full h-[80vh] object-contain shadow-2xl bg-black/50 backdrop-blur-sm transition-transform duration-100"
+                        style={{ transform: `scale(${zoomScale})`, transformOrigin: 'center center' }}
                     />
-                    <Button 
-                        size="icon" 
-                        variant="secondary" 
-                        className="absolute top-4 right-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => setSelectedImage(null)}
+                    <Button
+                        size="icon"
+                        variant="secondary"
+                        className="absolute top-4 right-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        onClick={() => { setSelectedImage(null); setZoomScale(1); }}
                     >
                         <XCircle className="h-5 w-5" />
                     </Button>
+                    {zoomScale > 1 && (
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm pointer-events-none">
+                        {Math.round(zoomScale * 100)}%
+                      </div>
+                    )}
                 </div>
               )}
             </DialogContent>
