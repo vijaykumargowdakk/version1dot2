@@ -116,7 +116,7 @@ export function PartFeedback({ inspectionId, partCode, userId }: PartFeedbackPro
             placeholder="Reason (optional)"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            className="h-7 text-xs w-40 bg-muted/50"
+            className="h-7 text-xs w-72 bg-muted/50"
             autoFocus
           />
           <Button type="submit" size="sm" variant="ghost" className="h-7 text-xs px-2">
