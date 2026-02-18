@@ -196,7 +196,7 @@ serve(async (req: Request) => {
       }
     }
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    const apiKey = Deno.env.get('LOVABLE_API_KEY')
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'AI service not configured.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
