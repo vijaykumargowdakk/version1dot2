@@ -4,27 +4,53 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Clock, Car, AlertCircle, CheckCircle2, XCircle, LogIn } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Clock, Car, AlertCircle, CheckCircle2, XCircle, LogIn, Download, X, MousePointer2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { ExportHistoryButton } from '@/components/ExportHistoryButton';
+import { exportInspectionsToExcel } from '@/lib/exportInspections';
 import { getInspectionHistory } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import type { Inspection } from '@/types/inspection';
 import { cn } from '@/lib/utils';
 
-function HistoryCard({ inspection, onClick }: { inspection: Inspection; onClick: () => void }) {
+interface HistoryCardProps {
+  inspection: Inspection;
+  onClick: () => void;
+  isSelectionMode: boolean;
+  isSelected: boolean;
+}
+
+function HistoryCard({ inspection, onClick, isSelectionMode, isSelected }: HistoryCardProps) {
   const healthPercent = inspection.health_score ? Math.round((inspection.health_score / 27) * 100) : 0;
   const damagedCount = inspection.inspection_data.filter(p => p.status === 'DAMAGED').length;
 
   return (
-    <Card 
-      className="glass-card cursor-pointer hover:border-primary/30 transition-all duration-300 group overflow-hidden"
+    <Card
+      className={cn(
+        "glass-card cursor-pointer hover:border-primary/30 transition-all duration-300 group overflow-hidden relative",
+        isSelected && "ring-2 ring-primary border-primary/50"
+      )}
       onClick={onClick}
     >
+      {/* Selection checkbox */}
+      {isSelectionMode && (
+        <div
+          className="absolute top-2 left-2 z-10"
+          onClick={(e) => { e.stopPropagation(); onClick(); }}
+        >
+          <Checkbox
+            checked={isSelected}
+            className="h-5 w-5 bg-background/80 backdrop-blur-sm border-2"
+          />
+        </div>
+      )}
+
       <div className="aspect-video relative overflow-hidden bg-muted">
         {inspection.thumbnail_url ? (
-          <img 
-            src={inspection.thumbnail_url} 
-            alt={inspection.vehicle_name || 'Vehicle'} 
+          <img
+            src={inspection.thumbnail_url}
+            alt={inspection.vehicle_name || 'Vehicle'}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         ) : (
@@ -94,11 +120,13 @@ export default function History() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Selection mode state
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   useEffect(() => {
     async function fetchHistory() {
-      // Wait for auth to be determined
       if (authLoading) return;
-      
       try {
         const data = await getInspectionHistory(user?.id);
         setInspections(data);
@@ -112,16 +140,51 @@ export default function History() {
     fetchHistory();
   }, [user?.id, authLoading]);
 
+  // ESC → home (only when NOT in selection mode)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSelectionMode) {
+        navigate('/');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isSelectionMode, navigate]);
+
   const handleCardClick = (inspection: Inspection) => {
-    navigate('/results', {
-      state: {
-        vehicleUrl: inspection.vehicle_url,
-        vehicleName: inspection.vehicle_name,
-        imageUrls: inspection.image_urls,
-        parts: inspection.inspection_data,
-        inspectionId: inspection.id,
-      },
-    });
+    if (isSelectionMode) {
+      setSelectedIds(prev =>
+        prev.includes(inspection.id)
+          ? prev.filter(id => id !== inspection.id)
+          : [...prev, inspection.id]
+      );
+    } else {
+      navigate('/results', {
+        state: {
+          vehicleUrl: inspection.vehicle_url,
+          vehicleName: inspection.vehicle_name,
+          imageUrls: inspection.image_urls,
+          parts: inspection.inspection_data,
+          inspectionId: inspection.id,
+        },
+      });
+    }
+  };
+
+  const enterSelectionMode = () => {
+    setIsSelectionMode(true);
+    setSelectedIds([]);
+  };
+
+  const cancelSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedIds([]);
+  };
+
+  const handleExportSelected = () => {
+    const selected = inspections.filter(ins => selectedIds.includes(ins.id));
+    exportInspectionsToExcel(selected, 'inspection-selected');
+    cancelSelectionMode();
   };
 
   return (
@@ -135,8 +198,8 @@ export default function History() {
               <span className="text-foreground">
                 Viewing public demo scans. <span className="text-muted-foreground">Login to save your own vehicle reports.</span>
               </span>
-              <Link 
-                to="/login" 
+              <Link
+                to="/login"
                 className="ml-4 px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
               >
                 Login
@@ -151,22 +214,62 @@ export default function History() {
             <div>
               <h1 className="text-3xl font-bold text-foreground">Inspection History</h1>
               <p className="text-muted-foreground mt-1">
-                {isAuthenticated 
+                {isAuthenticated
                   ? 'Your vehicle inspections and public demo scans'
                   : 'Public demo scans - login to save your own reports'
                 }
               </p>
             </div>
+
             {!loading && inspections.length > 0 && (
               <div className="flex items-center gap-3">
-                <ExportHistoryButton inspections={inspections} />
-                <span className="text-sm text-muted-foreground">
-                  {inspections.length} inspection{inspections.length !== 1 ? 's' : ''}
-                </span>
+                {isSelectionMode ? (
+                  /* --- Selection mode toolbar --- */
+                  <>
+                    <span className="text-sm text-muted-foreground">
+                      {selectedIds.length} selected
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={cancelSelectionMode}
+                    >
+                      <X className="h-4 w-4" />
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="gap-2"
+                      disabled={selectedIds.length === 0}
+                      onClick={handleExportSelected}
+                    >
+                      <Download className="h-4 w-4" />
+                      Export Selected ({selectedIds.length})
+                    </Button>
+                  </>
+                ) : (
+                  /* --- Normal toolbar --- */
+                  <>
+                    <ExportHistoryButton inspections={inspections} />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={enterSelectionMode}
+                    >
+                      <MousePointer2 className="h-4 w-4" />
+                      Select Manually
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      {inspections.length} inspection{inspections.length !== 1 ? 's' : ''}
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>
-          
+
           {loading ? (
             <LoadingSkeleton />
           ) : error ? (
@@ -194,10 +297,12 @@ export default function History() {
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {inspections.map((inspection) => (
-                <HistoryCard 
-                  key={inspection.id} 
-                  inspection={inspection} 
+                <HistoryCard
+                  key={inspection.id}
+                  inspection={inspection}
                   onClick={() => handleCardClick(inspection)}
+                  isSelectionMode={isSelectionMode}
+                  isSelected={selectedIds.includes(inspection.id)}
                 />
               ))}
             </div>

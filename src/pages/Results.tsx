@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { Download, ArrowLeft, ExternalLink, AlertTriangle, Eye, Search, Maximize2, XCircle, HelpCircle, Activity, Info } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -93,6 +93,17 @@ export default function VisualResults() {
   const accordionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const { vehicleUrl, vehicleName, vehicleSummary, imageUrls, parts = [], inspectionId } = (location.state as LocationState) || {};
+
+  // ESC → navigate home (only when lightbox is closed)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !selectedImage) {
+        navigate('/');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedImage, navigate]);
 
   // Stats Logic
   const score = useMemo(() => ({
